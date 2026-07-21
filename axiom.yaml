@@ -1,40 +1,127 @@
 name: christiangeorgelucas/office-tools
 version: 0.1.0
 language: java
+description: >
+    Extract structured data from Microsoft Office documents — spreadsheets
+    (.xlsx/.xls) and Word documents (.docx/.doc) — via Apache POI, without
+    opening Office itself. Every node accepts an OfficeFile (raw bytes, or a
+    URL to fetch when data is empty, plus an optional password for encrypted
+    OOXML files); input size and output row/column/paragraph/table counts are
+    bounded, malformed or oversized input returns a structured error rather
+    than crashing, and formula cells always report their last-saved cached
+    result — formulas are never live-recomputed.
 nodes:
     - name: DetectFormat
       input: OfficeFile
       output: FormatResult
+      description: >
+          Cheaply identify which of the four Office formats a file is — xlsx,
+          xls, docx, or doc — without fully parsing it, using Apache POI's
+          magic-byte sniffing (OLE2 vs. the OOXML zip container) plus a
+          zip-entry-name check for OOXML files. A file that is neither is not
+          an error: it returns format="unknown" with error left empty, useful
+          for triaging a document before choosing which node to call next.
     - name: GetProperties
       input: OfficeFile
       output: PropertiesResult
+      description: >
+          Read document-level metadata from an Office file — title, author,
+          subject, keywords, comments, category, created/modified timestamps,
+          last-modified-by, revision, application, and template — one shape
+          covering all four supported formats (.xlsx/.xls/.docx/.doc). A
+          well-formed file that simply has no value set for a field returns
+          that field empty, not an error.
     - name: ListSheets
       input: OfficeFile
       output: SheetsResult
+      description: >
+          List every sheet in a spreadsheet (.xlsx/.xls) — name, 0-based
+          index, used row/column extent, and whether it is hidden — plus the
+          workbook's active sheet index. Cheap: only reads sheet metadata,
+          not cell data.
     - name: ReadSheet
       input: ReadSheetInput
       output: GridResult
+      description: >
+          Read a spreadsheet sheet's used cell grid — every row from the
+          sheet's first used row through its last, each cell typed
+          (STRING/NUMERIC/BOOLEAN/FORMULA/BLANK/ERROR) with its value,
+          formula text, and Excel-formatted display string reflecting the
+          cell's cached (never live-recomputed) result. Bounded by
+          max_rows/max_cols (0 = default cap of 10,000 rows / 1,000 columns,
+          hard ceiling 50,000/5,000); truncated reports whether the sheet's
+          real extent exceeded the cap actually applied. Select the sheet by
+          name (checked first) or 0-based index.
     - name: ReadRange
       input: ReadRangeInput
       output: GridResult
+      description: >
+          Read one explicit A1-notation cell range from a sheet — e.g.
+          "B2:D10" or a single cell "B2" — returning the same typed-cell grid
+          shape as ReadSheet, but addressed by range rather than bounded bulk
+          read. Bounded to a 50,000-row / 5,000-column hard cap (truncated
+          reports if the requested range exceeded it); a malformed range
+          reference or an out-of-bounds sheet returns a structured error.
     - name: ReadCell
       input: ReadCellInput
       output: CellResult
+      description: >
+          Look up one cell by A1-notation reference (e.g. "C7") on a sheet.
+          Returns the same typed Cell shape as ReadSheet/ReadRange rows. A
+          reference past the sheet's used range is not an error: found is
+          false and cell is returned with type BLANK. An unparseable or
+          incomplete cell_ref (e.g. missing its column or row half), or the
+          sheet not existing, returns a structured error.
     - name: ListDefinedNames
       input: OfficeFile
       output: DefinedNamesResult
+      description: >
+          List a workbook's defined (named) ranges and named constants — the
+          things Excel's Name Manager shows — each with its name, the
+          formula or reference it resolves to, whether it is workbook-scoped
+          or sheet-scoped, and whether it is a named function rather than a
+          range. Bounded at 5,000 names; a workbook with none returns an
+          empty list, not an error.
     - name: ExtractSpreadsheetText
       input: OfficeFile
       output: TextResult
+      description: >
+          Extract all cell text from every sheet in a spreadsheet as one
+          plain-text document — cells tab-separated within a row, rows
+          newline-separated, a blank line between sheets. Uses each cell's
+          Excel-formatted display value (dates/numbers rendered as Excel
+          would show them), including formula cells' cached results.
+          Bounded by sheet count, per-sheet row/column extent, and total
+          output size; truncated reports if any bound was hit.
     - name: ExtractDocText
       input: OfficeFile
       output: TextResult
+      description: >
+          Extract the full plain text of a Word document — .docx (OOXML) via
+          POI's XWPFWordExtractor, or legacy .doc (OLE2) via WordExtractor —
+          the paragraph text in document order. unit_count is the paragraph
+          count for .docx (unavailable for legacy .doc, reported as 0).
+          Output is capped at ~20M characters with truncated set if the real
+          text was longer.
     - name: ExtractParagraphs
       input: OfficeFile
       output: ParagraphsResult
+      description: >
+          List every paragraph of a .docx Word document, in document order,
+          with its text, named style (Word's styleId, e.g. "Heading1",
+          "Normal"), and a derived is_heading/heading_level from the
+          standard "HeadingN" style-id convention Word's default template
+          uses. .doc (legacy binary) is not supported by this node — use
+          ExtractDocText for legacy .doc text. Bounded to 20,000 paragraphs.
     - name: ExtractDocTables
       input: OfficeFile
       output: TablesResult
+      description: >
+          Extract every table embedded in a .docx Word document as
+          structured rows of cell text, in document order. .doc (legacy
+          binary) is not supported by this node — use ExtractDocText for
+          legacy .doc text. Bounded to 2,000 tables and 5,000 rows per
+          table.
 
 build:
     maven_deps:
