@@ -1,6 +1,7 @@
 package nodes;
 
 import axiom.AxiomContext;
+import com.google.protobuf.ByteString;
 import gen.Messages.OfficeFile;
 import gen.Messages.FormatResult;
 import org.junit.jupiter.api.Test;
@@ -8,23 +9,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-// TESTS — delete this block when done ─────────────────────────────────────────
-// Tests are required to publish this package. The publish pipeline runs your
-// tests as a quality gate — a package will not be published if tests fail or
-// do not meet the minimum requirements.
-//
-// Requirements checked before publishing:
-//   - At least one test per node
-//   - All tests must pass
-//   - Output fields must be meaningfully asserted — not just null-checked
-//
-// The generated test below is a starting point. Replace the TODO comment with
-// real assertions that verify your node returns correct data for known inputs.
-// Think: given a specific input, what should the output fields contain?
-//
-// Run your tests locally at any time:
-//   axiom test
 
 public class DetectFormatTest {
 
@@ -62,11 +46,47 @@ public class DetectFormatTest {
     }
 
     @Test
-    public void testDetectFormat() {
+    public void detectsXlsx() {
         AxiomContext ax = new TestContext();
-        OfficeFile input = OfficeFile.newBuilder().build();
+        OfficeFile input = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.simpleWorkbook()))
+                .build();
         FormatResult result = DetectFormat.detectFormat(ax, input);
-        assertNotNull(result);
-        // TODO: assert output fields — e.g. assertEquals("expected", result.getSomeField())
+        assertEquals("", result.getError());
+        assertEquals("xlsx", result.getFormat());
+        assertTrue(result.getIsOoxml());
+        assertFalse(result.getIsLegacyBinary());
+        assertEquals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.getMimeType());
+    }
+
+    @Test
+    public void detectsDocx() {
+        AxiomContext ax = new TestContext();
+        OfficeFile input = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.simpleDocx()))
+                .build();
+        FormatResult result = DetectFormat.detectFormat(ax, input);
+        assertEquals("", result.getError());
+        assertEquals("docx", result.getFormat());
+        assertTrue(result.getIsOoxml());
+    }
+
+    @Test
+    public void unrecognizedBytesAreUnknownNotError() {
+        AxiomContext ax = new TestContext();
+        OfficeFile input = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.garbageBytes()))
+                .build();
+        FormatResult result = DetectFormat.detectFormat(ax, input);
+        // Per the node's documented contract: unrecognized input is not an error.
+        assertEquals("", result.getError());
+        assertEquals("unknown", result.getFormat());
+    }
+
+    @Test
+    public void emptyInputIsAStructuredError() {
+        AxiomContext ax = new TestContext();
+        FormatResult result = DetectFormat.detectFormat(ax, OfficeFile.newBuilder().build());
+        assertNotEquals("", result.getError());
     }
 }

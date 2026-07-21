@@ -3,7 +3,7 @@ package nodes;
 import gen.Messages.Cell;
 import gen.Messages.OfficeFile;
 
-import org.apache.poi.hpsf.SummaryInformation;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.poifs.filesystem.FileMagic;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.usermodel.CellType;
@@ -38,6 +38,18 @@ import java.util.zip.ZipInputStream;
  */
 final class OfficeUtil {
     private OfficeUtil() {}
+
+    static {
+        // Defense-in-depth against OOXML zip bombs. OfficeFile input is
+        // already capped at MAX_INPUT_BYTES (40MB compressed) below, and POI
+        // ships its own ratio-based zip-bomb detector (rejects an entry once
+        // uncompressed/compressed exceeds ~100x by default) — but that still
+        // permits gigabytes of inflation from a 40MB upload before it trips.
+        // Tighten the absolute per-entry cap so a single crafted zip entry
+        // cannot balloon memory regardless of compression ratio, independent
+        // of and in addition to POI's default ratio check.
+        ZipSecureFile.setMaxEntrySize(1_000_000_000L); // 1 GB per zip entry
+    }
 
     // --- Cost bounds on untrusted input (checked before any parsing) -------
     static final long MAX_INPUT_BYTES = 40L * 1024 * 1024;   // 40 MB raw file
@@ -172,11 +184,42 @@ final class OfficeUtil {
         if (b.length == 4 && (b[0] & 0xFF) == 100 && (b[1] & 0xFF) >= 64 && (b[1] & 0xFF) <= 127) {
             return true;
         }
-        // IPv4-mapped/compat and unique-local IPv6 fc00::/7
-        if (b.length == 16 && (b[0] & 0xFE) == 0xFC) {
-            return true;
+        if (b.length == 16) {
+            // unique-local IPv6 fc00::/7
+            if ((b[0] & 0xFE) == 0xFC) {
+                return true;
+            }
+            // Both the standard IPv4-mapped form (::ffff:a.b.c.d) and the
+            // deprecated IPv4-compatible form (::a.b.c.d, e.g. ::127.0.0.1)
+            // embed a full IPv4 address in the last 4 bytes with bytes[0..9]
+            // zero. isLoopbackAddress()/isSiteLocalAddress() above only
+            // recognize the canonical ::1 / fc00::/7 shapes, NOT an embedded
+            // IPv4 loopback/private address in this dual form — unwrap and
+            // re-check it explicitly so a caller cannot bypass the guard by
+            // spelling a blocked IPv4 address inside an IPv6 literal.
+            boolean zeroPrefix = true;
+            for (int i = 0; i < 10; i++) {
+                if (b[i] != 0) { zeroPrefix = false; break; }
+            }
+            boolean mappedOrCompatible = zeroPrefix
+                    && ((b[10] == 0 && b[11] == 0) || ((b[10] & 0xFF) == 0xFF && (b[11] & 0xFF) == 0xFF));
+            if (mappedOrCompatible && isBlockedEmbeddedIPv4(b[12], b[13])) {
+                return true;
+            }
         }
         return false;
+    }
+
+    /** Loopback/private/link-local/CGNAT check on an embedded IPv4's first two octets. */
+    private static boolean isBlockedEmbeddedIPv4(byte b0Signed, byte b1Signed) {
+        int b0 = b0Signed & 0xFF, b1 = b1Signed & 0xFF;
+        if (b0 == 127) return true;                              // loopback 127.0.0.0/8
+        if (b0 == 0) return true;                                 // "this network"
+        if (b0 == 10) return true;                                // private 10.0.0.0/8
+        if (b0 == 172 && b1 >= 16 && b1 <= 31) return true;        // private 172.16.0.0/12
+        if (b0 == 192 && b1 == 168) return true;                   // private 192.168.0.0/16
+        if (b0 == 169 && b1 == 254) return true;                   // link-local 169.254.0.0/16
+        return b0 == 100 && b1 >= 64 && b1 <= 127;                 // CGNAT 100.64.0.0/10
     }
 
     private static byte[] readBounded(InputStream in, long max) throws OfficeError {
@@ -350,7 +393,7 @@ final class OfficeUtil {
                 break;
         }
         try {
-            String formatted = formatter.formatCellValue(poiCell);
+            String formatted = formatCellText(poiCell, formatter);
             if (formatted != null) {
                 b.setFormattedValue(formatted);
             }
@@ -358,6 +401,62 @@ final class OfficeUtil {
             // formatted display string is best-effort; never fail the node over it
         }
         return b;
+    }
+
+    /**
+     * Excel-formatted display text for a cell, WITHOUT live-evaluating
+     * formulas. DataFormatter.formatCellValue(Cell) — with no
+     * FormulaEvaluator — returns the raw formula source text (not its
+     * value) for FORMULA-type cells; that is never what a caller wants, so
+     * every node must route through this helper instead of calling
+     * DataFormatter directly on a cell that might be a formula. For a
+     * FORMULA cell we format its cached (last-saved) result per the
+     * cell's own number format, matching the value already reported in
+     * number_value/string_value/bool_value.
+     */
+    static String formatCellText(org.apache.poi.ss.usermodel.Cell cell, DataFormatter formatter) {
+        if (cell == null) return "";
+        if (cell.getCellType() != CellType.FORMULA) {
+            return formatter.formatCellValue(cell);
+        }
+        CellType cached;
+        try {
+            cached = cell.getCachedFormulaResultType();
+        } catch (Exception e) {
+            return "";
+        }
+        switch (cached) {
+            case NUMERIC:
+                try {
+                    return formatter.formatRawCellContents(
+                            cell.getNumericCellValue(),
+                            cell.getCellStyle().getDataFormat(),
+                            cell.getCellStyle().getDataFormatString());
+                } catch (Exception e) {
+                    return String.valueOf(cell.getNumericCellValue());
+                }
+            case STRING:
+                try {
+                    return cell.getRichStringCellValue().getString();
+                } catch (Exception e) {
+                    return "";
+                }
+            case BOOLEAN:
+                try {
+                    return String.valueOf(cell.getBooleanCellValue());
+                } catch (Exception e) {
+                    return "";
+                }
+            case ERROR:
+                try {
+                    return FormulaError.forInt(cell.getErrorCellValue()).getString();
+                } catch (Exception e) {
+                    return "#ERR";
+                }
+            case BLANK:
+            default:
+                return "";
+        }
     }
 
     // --- Document properties ----------------------------------------------

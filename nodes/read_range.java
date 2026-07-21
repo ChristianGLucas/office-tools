@@ -38,6 +38,13 @@ public class ReadRange {
             } catch (Exception e) {
                 return GridResult.newBuilder().setError("invalid range_ref: " + input.getRangeRef()).build();
             }
+            if (range.getFirstRow() < 0 || range.getFirstColumn() < 0
+                    || range.getLastRow() < 0 || range.getLastColumn() < 0) {
+                return GridResult.newBuilder()
+                        .setError("invalid range_ref (must name both a column and a row on each side): "
+                                + input.getRangeRef())
+                        .build();
+            }
 
             byte[] bytes = OfficeUtil.loadBytes(input.getFile());
             try (Workbook wb = OfficeUtil.openWorkbook(bytes, input.getFile().getPassword())) {

@@ -57,7 +57,7 @@ public class ExtractSpreadsheetText {
                             org.apache.poi.ss.usermodel.Cell cell = row.getCell(c);
                             if (cell != null) {
                                 try {
-                                    sb.append(formatter.formatCellValue(cell));
+                                    sb.append(OfficeUtil.formatCellText(cell, formatter));
                                 } catch (Exception ignored) {
                                     // best-effort formatting
                                 }

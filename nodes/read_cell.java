@@ -35,6 +35,13 @@ public class ReadCell {
             } catch (Exception e) {
                 return CellResult.newBuilder().setError("invalid cell_ref: " + input.getCellRef()).build();
             }
+            if (ref.getRow() < 0 || ref.getCol() < 0) {
+                // CellReference parses a row-only or column-only reference (e.g.
+                // "1234" or "AB") without throwing; a full cell lookup needs both.
+                return CellResult.newBuilder()
+                        .setError("invalid cell_ref (must name both a column and a row): " + input.getCellRef())
+                        .build();
+            }
 
             byte[] bytes = OfficeUtil.loadBytes(input.getFile());
             try (Workbook wb = OfficeUtil.openWorkbook(bytes, input.getFile().getPassword())) {

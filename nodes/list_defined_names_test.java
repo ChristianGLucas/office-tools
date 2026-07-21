@@ -1,6 +1,7 @@
 package nodes;
 
 import axiom.AxiomContext;
+import com.google.protobuf.ByteString;
 import gen.Messages.OfficeFile;
 import gen.Messages.DefinedNamesResult;
 import org.junit.jupiter.api.Test;
@@ -8,23 +9,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-// TESTS — delete this block when done ─────────────────────────────────────────
-// Tests are required to publish this package. The publish pipeline runs your
-// tests as a quality gate — a package will not be published if tests fail or
-// do not meet the minimum requirements.
-//
-// Requirements checked before publishing:
-//   - At least one test per node
-//   - All tests must pass
-//   - Output fields must be meaningfully asserted — not just null-checked
-//
-// The generated test below is a starting point. Replace the TODO comment with
-// real assertions that verify your node returns correct data for known inputs.
-// Think: given a specific input, what should the output fields contain?
-//
-// Run your tests locally at any time:
-//   axiom test
 
 public class ListDefinedNamesTest {
 
@@ -62,11 +46,32 @@ public class ListDefinedNamesTest {
     }
 
     @Test
-    public void testListDefinedNames() {
+    public void listsTheOneDefinedName() {
         AxiomContext ax = new TestContext();
-        OfficeFile input = OfficeFile.newBuilder().build();
+        OfficeFile input = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.simpleWorkbook()))
+                .build();
         DefinedNamesResult result = ListDefinedNames.listDefinedNames(ax, input);
-        assertNotNull(result);
-        // TODO: assert output fields — e.g. assertEquals("expected", result.getSomeField())
+        assertEquals("", result.getError());
+        assertEquals(1, result.getCount());
+        assertEquals("Total", result.getNames(0).getName());
+        assertEquals("Sheet1!$B$1", result.getNames(0).getRefersTo());
+        assertFalse(result.getNames(0).getIsFunctionName());
+    }
+
+    @Test
+    public void noDefinedNamesIsEmptyNotError() throws Exception {
+        byte[] bytes;
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            wb.createSheet("Sheet1");
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            wb.write(out);
+            bytes = out.toByteArray();
+        }
+        AxiomContext ax = new TestContext();
+        OfficeFile input = OfficeFile.newBuilder().setData(ByteString.copyFrom(bytes)).build();
+        DefinedNamesResult result = ListDefinedNames.listDefinedNames(ax, input);
+        assertEquals("", result.getError());
+        assertEquals(0, result.getCount());
     }
 }

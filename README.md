@@ -39,8 +39,12 @@ string.
 ## Safety bounds
 
 - Max input file size: 40 MB (raw bytes or fetched over HTTP/HTTPS).
-- Row/column/paragraph/table/defined-name counts are capped, with a
-  `truncated` flag reporting when a cap was hit.
+- Row/column and full-text-extraction sizes are capped, with a `truncated`
+  flag on the result reporting when a cap was hit (`ReadSheet`, `ReadRange`,
+  `ExtractSpreadsheetText`, `ExtractDocText`). Defined-name, paragraph, and
+  table counts are also capped (5,000 / 20,000 / 2,000 respectively) but do
+  not currently report a `truncated` signal — a doc this size is silently cut
+  at the cap. Tracked for a future version.
 - URL fetches are SSRF-guarded: scheme allowlist, DNS resolution of every
   redirect hop checked against loopback/link-local/private/CGNAT ranges,
   bounded redirects, and a bounded response size.

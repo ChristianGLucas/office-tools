@@ -1,6 +1,8 @@
 package nodes;
 
 import axiom.AxiomContext;
+import com.google.protobuf.ByteString;
+import gen.Messages.OfficeFile;
 import gen.Messages.ReadSheetInput;
 import gen.Messages.GridResult;
 import org.junit.jupiter.api.Test;
@@ -8,23 +10,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-// TESTS — delete this block when done ─────────────────────────────────────────
-// Tests are required to publish this package. The publish pipeline runs your
-// tests as a quality gate — a package will not be published if tests fail or
-// do not meet the minimum requirements.
-//
-// Requirements checked before publishing:
-//   - At least one test per node
-//   - All tests must pass
-//   - Output fields must be meaningfully asserted — not just null-checked
-//
-// The generated test below is a starting point. Replace the TODO comment with
-// real assertions that verify your node returns correct data for known inputs.
-// Think: given a specific input, what should the output fields contain?
-//
-// Run your tests locally at any time:
-//   axiom test
 
 public class ReadSheetTest {
 
@@ -62,11 +47,52 @@ public class ReadSheetTest {
     }
 
     @Test
-    public void testReadSheet() {
+    public void readsTypedCellsAcrossTheUsedGrid() {
         AxiomContext ax = new TestContext();
-        ReadSheetInput input = ReadSheetInput.newBuilder().build();
+        OfficeFile file = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.simpleWorkbook()))
+                .build();
+        ReadSheetInput input = ReadSheetInput.newBuilder().setFile(file).setSheetName("Sheet1").build();
         GridResult result = ReadSheet.readSheet(ax, input);
-        assertNotNull(result);
-        // TODO: assert output fields — e.g. assertEquals("expected", result.getSomeField())
+        assertEquals("", result.getError());
+        assertEquals("Sheet1", result.getSheetName());
+        assertEquals(2, result.getRowCount());
+        assertFalse(result.getTruncated());
+
+        assertEquals("Hello", result.getRows(0).getCells(0).getStringValue());
+        assertEquals("STRING", result.getRows(0).getCells(0).getType());
+        assertEquals(42.0, result.getRows(0).getCells(1).getNumberValue());
+
+        // A2 is a FORMULA cell: formula text "1+2" but a CACHED result of 999
+        // (deliberately different from live-evaluating "1+2" == 3). Every
+        // reported value must reflect the cache, never a live re-evaluation.
+        var formulaCell = result.getRows(1).getCells(0);
+        assertEquals("FORMULA", formulaCell.getType());
+        assertEquals("1+2", formulaCell.getFormula());
+        assertEquals(999.0, formulaCell.getNumberValue());
+        assertEquals("999", formulaCell.getFormattedValue());
+
+        assertTrue(result.getRows(1).getCells(1).getBoolValue());
+    }
+
+    @Test
+    public void malformedInputIsStructuredError() {
+        AxiomContext ax = new TestContext();
+        OfficeFile file = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.garbageBytes()))
+                .build();
+        GridResult result = ReadSheet.readSheet(ax, ReadSheetInput.newBuilder().setFile(file).build());
+        assertNotEquals("", result.getError());
+    }
+
+    @Test
+    public void unknownSheetNameIsStructuredError() {
+        AxiomContext ax = new TestContext();
+        OfficeFile file = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.simpleWorkbook()))
+                .build();
+        GridResult result = ReadSheet.readSheet(ax,
+                ReadSheetInput.newBuilder().setFile(file).setSheetName("NoSuchSheet").build());
+        assertNotEquals("", result.getError());
     }
 }

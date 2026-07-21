@@ -1,6 +1,7 @@
 package nodes;
 
 import axiom.AxiomContext;
+import com.google.protobuf.ByteString;
 import gen.Messages.OfficeFile;
 import gen.Messages.SheetsResult;
 import org.junit.jupiter.api.Test;
@@ -8,23 +9,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-// TESTS — delete this block when done ─────────────────────────────────────────
-// Tests are required to publish this package. The publish pipeline runs your
-// tests as a quality gate — a package will not be published if tests fail or
-// do not meet the minimum requirements.
-//
-// Requirements checked before publishing:
-//   - At least one test per node
-//   - All tests must pass
-//   - Output fields must be meaningfully asserted — not just null-checked
-//
-// The generated test below is a starting point. Replace the TODO comment with
-// real assertions that verify your node returns correct data for known inputs.
-// Think: given a specific input, what should the output fields contain?
-//
-// Run your tests locally at any time:
-//   axiom test
 
 public class ListSheetsTest {
 
@@ -62,11 +46,27 @@ public class ListSheetsTest {
     }
 
     @Test
-    public void testListSheets() {
+    public void listsTheOneSheetWithCorrectShape() {
         AxiomContext ax = new TestContext();
-        OfficeFile input = OfficeFile.newBuilder().build();
+        OfficeFile input = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.simpleWorkbook()))
+                .build();
         SheetsResult result = ListSheets.listSheets(ax, input);
-        assertNotNull(result);
-        // TODO: assert output fields — e.g. assertEquals("expected", result.getSomeField())
+        assertEquals("", result.getError());
+        assertEquals(1, result.getSheetCount());
+        assertEquals("Sheet1", result.getSheets(0).getName());
+        assertEquals(0, result.getSheets(0).getIndex());
+        assertEquals(2, result.getSheets(0).getRowCount()); // rows 0 and 1 used
+        assertFalse(result.getSheets(0).getIsHidden());
+    }
+
+    @Test
+    public void malformedInputIsStructuredError() {
+        AxiomContext ax = new TestContext();
+        OfficeFile input = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.garbageBytes()))
+                .build();
+        SheetsResult result = ListSheets.listSheets(ax, input);
+        assertNotEquals("", result.getError());
     }
 }

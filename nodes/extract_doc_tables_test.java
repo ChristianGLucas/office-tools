@@ -1,6 +1,7 @@
 package nodes;
 
 import axiom.AxiomContext;
+import com.google.protobuf.ByteString;
 import gen.Messages.OfficeFile;
 import gen.Messages.TablesResult;
 import org.junit.jupiter.api.Test;
@@ -8,23 +9,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-// TESTS — delete this block when done ─────────────────────────────────────────
-// Tests are required to publish this package. The publish pipeline runs your
-// tests as a quality gate — a package will not be published if tests fail or
-// do not meet the minimum requirements.
-//
-// Requirements checked before publishing:
-//   - At least one test per node
-//   - All tests must pass
-//   - Output fields must be meaningfully asserted — not just null-checked
-//
-// The generated test below is a starting point. Replace the TODO comment with
-// real assertions that verify your node returns correct data for known inputs.
-// Think: given a specific input, what should the output fields contain?
-//
-// Run your tests locally at any time:
-//   axiom test
 
 public class ExtractDocTablesTest {
 
@@ -62,11 +46,29 @@ public class ExtractDocTablesTest {
     }
 
     @Test
-    public void testExtractDocTables() {
+    public void extractsTheOneTwoByTwoTable() {
         AxiomContext ax = new TestContext();
-        OfficeFile input = OfficeFile.newBuilder().build();
+        OfficeFile input = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.simpleDocx()))
+                .build();
         TablesResult result = ExtractDocTables.extractDocTables(ax, input);
-        assertNotNull(result);
-        // TODO: assert output fields — e.g. assertEquals("expected", result.getSomeField())
+        assertEquals("", result.getError());
+        assertEquals(1, result.getTableCount());
+        var table = result.getTables(0);
+        assertEquals(2, table.getRowCount());
+        assertEquals("A1", table.getRows(0).getCells(0));
+        assertEquals("B1", table.getRows(0).getCells(1));
+        assertEquals("A2", table.getRows(1).getCells(0));
+        assertEquals("B2", table.getRows(1).getCells(1));
+    }
+
+    @Test
+    public void nonDocxIsStructuredError() {
+        AxiomContext ax = new TestContext();
+        OfficeFile input = OfficeFile.newBuilder()
+                .setData(ByteString.copyFrom(OfficeTestFixtures.simpleWorkbook()))
+                .build();
+        TablesResult result = ExtractDocTables.extractDocTables(ax, input);
+        assertNotEquals("", result.getError());
     }
 }
