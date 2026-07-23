@@ -1,6 +1,6 @@
 # office-tools
 
-An [Axiom](https://axiom.co) node package that wraps [Apache POI](https://poi.apache.org/)
+An [Axiom](https://axiomide.com) node package that wraps [Apache POI](https://poi.apache.org/)
 to extract structured data from Microsoft Office documents — spreadsheets
 (`.xlsx`, `.xls`) and Word documents (`.docx`, `.doc`) — without opening
 Office itself.
