@@ -3,7 +3,6 @@ package nodes;
 import gen.Messages.Cell;
 import gen.Messages.OfficeFile;
 
-import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.poifs.filesystem.FileMagic;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.usermodel.CellType;
@@ -39,30 +38,11 @@ import java.util.zip.ZipInputStream;
 final class OfficeUtil {
     private OfficeUtil() {}
 
-    static {
-        // Defense-in-depth against OOXML zip bombs. OfficeFile input is
-        // already capped at MAX_INPUT_BYTES (40MB compressed) below, and POI
-        // ships its own ratio-based zip-bomb detector (rejects an entry once
-        // uncompressed/compressed exceeds ~100x by default) — but that still
-        // permits gigabytes of inflation from a 40MB upload before it trips.
-        // Tighten the absolute per-entry cap so a single crafted zip entry
-        // cannot balloon memory regardless of compression ratio, independent
-        // of and in addition to POI's default ratio check.
-        ZipSecureFile.setMaxEntrySize(1_000_000_000L); // 1 GB per zip entry
-    }
-
-    // --- Cost bounds on untrusted input (checked before any parsing) -------
-    static final long MAX_INPUT_BYTES = 40L * 1024 * 1024;   // 40 MB raw file
-    static final long MAX_FETCH_BYTES = 40L * 1024 * 1024;   // 40 MB over the wire
+    // Default row/col extent ReadSheet applies when the caller doesn't
+    // request a specific max_rows/max_cols — a sensible default page size,
+    // not a hard ceiling; a caller can request more via max_rows/max_cols.
     static final int DEFAULT_MAX_ROWS = 10_000;
-    static final int HARD_MAX_ROWS = 50_000;
     static final int DEFAULT_MAX_COLS = 1_000;
-    static final int HARD_MAX_COLS = 5_000;
-    static final int MAX_DEFINED_NAMES = 5_000;
-    static final int MAX_PARAGRAPHS = 20_000;
-    static final int MAX_TABLES = 2_000;
-    static final int MAX_TABLE_ROWS = 5_000;
-    static final int MAX_SHEETS_FOR_TEXT = 2_000;
 
     /** A structured, caller-facing failure — never a crash. */
     static final class OfficeError extends Exception {
@@ -72,7 +52,7 @@ final class OfficeUtil {
     // --- Loading input -------------------------------------------------
 
     /** Resolve an OfficeFile's raw bytes: data directly, or an SSRF-guarded
-     *  fetch from url when data is empty. Enforces MAX_INPUT_BYTES either way. */
+     *  fetch from url when data is empty. */
     static byte[] loadBytes(OfficeFile file) throws OfficeError {
         byte[] data = file.getData().toByteArray();
         if (data.length == 0 && !file.getUrl().isEmpty()) {
@@ -80,10 +60,6 @@ final class OfficeUtil {
         }
         if (data.length == 0) {
             throw new OfficeError("OfficeFile has neither data nor a fetchable url");
-        }
-        if (data.length > MAX_INPUT_BYTES) {
-            throw new OfficeError("input exceeds size limit: " + data.length
-                    + " bytes > " + MAX_INPUT_BYTES + " byte cap");
         }
         return data;
     }
@@ -93,8 +69,7 @@ final class OfficeUtil {
     // Scheme allowlist (http/https only) + DNS resolution of every hop's host
     // with each resolved address checked against loopback/link-local/private
     // (site-local)/multicast/reserved/CGNAT ranges before connecting, redirects
-    // capped and re-validated on every hop, response body capped at
-    // MAX_FETCH_BYTES. NOTE (disclosed limitation, not hidden): unlike a raw
+    // capped and re-validated on every hop. NOTE (disclosed limitation, not hidden): unlike a raw
     // socket dialer, java.net.http.HttpClient resolves DNS internally at
     // connect time — there is no supported hook to pin the already-validated
     // IP for the actual TCP connect, so a narrow DNS-rebinding TOCTOU window
@@ -149,7 +124,7 @@ final class OfficeUtil {
                 if (status < 200 || status >= 300) {
                     throw new OfficeError("fetch returned HTTP " + status);
                 }
-                return readBounded(resp.body(), MAX_FETCH_BYTES);
+                return readAll(resp.body());
             }
         } catch (IllegalArgumentException e) {
             throw new OfficeError("invalid URL: " + e.getMessage());
@@ -222,17 +197,12 @@ final class OfficeUtil {
         return b0 == 100 && b1 >= 64 && b1 <= 127;                 // CGNAT 100.64.0.0/10
     }
 
-    private static byte[] readBounded(InputStream in, long max) throws OfficeError {
+    private static byte[] readAll(InputStream in) throws OfficeError {
         try (InputStream is = in) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buf = new byte[8192];
-            long total = 0;
             int n;
             while ((n = is.read(buf)) != -1) {
-                total += n;
-                if (total > max) {
-                    throw new OfficeError("response exceeds size limit: " + max + " byte cap");
-                }
                 out.write(buf, 0, n);
             }
             return out.toByteArray();

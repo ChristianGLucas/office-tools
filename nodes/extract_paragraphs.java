@@ -26,7 +26,7 @@ public class ExtractParagraphs {
      * document on a custom template with differently-named heading styles
      * will report is_heading=false — a disclosed limitation, not a crash).
      * .doc (legacy binary) is not supported by this node — use
-     * ExtractDocText for legacy .doc text. Bounded to 20,000 paragraphs.
+     * ExtractDocText for legacy .doc text.
      *
      * @param ax    The AxiomContext: logging, secrets, reflection, mutation.
      * @param input The decoded OfficeFile for this invocation.
@@ -46,7 +46,6 @@ public class ExtractParagraphs {
                 ParagraphsResult.Builder result = ParagraphsResult.newBuilder();
                 int count = 0;
                 for (int i = 0; i < paragraphs.size(); i++) {
-                    if (count >= OfficeUtil.MAX_PARAGRAPHS) break;
                     XWPFParagraph p = paragraphs.get(i);
                     String styleId = OfficeUtil.orEmpty(p.getStyleID());
                     Matcher m = HEADING_STYLE.matcher(styleId);

@@ -15,15 +15,12 @@ import java.util.Map;
 
 public class ExtractDocText {
 
-    private static final long MAX_TEXT_CHARS = 20_000_000; // 20M chars
-
     /**
      * Extract the full plain text of a Word document — .docx (OOXML) via
      * XWPFWordExtractor, or legacy .doc (OLE2) via WordExtractor — the
      * paragraph text in document order, POI's own extractor doing the
      * unpacking. unit_count is the paragraph count for .docx (unavailable
-     * for legacy .doc, reported as 0). Output is capped at ~20M characters
-     * with truncated set if the real text was longer.
+     * for legacy .doc, reported as 0).
      *
      * @param ax    The AxiomContext: logging, secrets, reflection, mutation.
      * @param input The decoded OfficeFile for this invocation.
@@ -55,15 +52,9 @@ public class ExtractDocText {
                 default:
                     return TextResult.newBuilder().setError("not a Word document (.docx/.doc)").build();
             }
-            boolean truncated = false;
-            if (text.length() > MAX_TEXT_CHARS) {
-                text = text.substring(0, (int) MAX_TEXT_CHARS);
-                truncated = true;
-            }
             return TextResult.newBuilder()
                     .setText(text)
                     .setUnitCount(unitCount)
-                    .setTruncated(truncated)
                     .build();
         } catch (OfficeUtil.OfficeError e) {
             return TextResult.newBuilder().setError(e.getMessage()).build();

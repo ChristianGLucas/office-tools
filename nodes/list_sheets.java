@@ -31,12 +31,8 @@ public class ListSheets {
                 for (int i = 0; i < wb.getNumberOfSheets(); i++) {
                     Sheet s = wb.getSheetAt(i);
                     int rowCount = s.getLastRowNum() >= 0 ? s.getLastRowNum() + 1 : 0;
-                    // col_count is a bounded best-effort scan (cheap metadata, not a
-                    // full read): cap the rows sampled so a sheet with a pathologically
-                    // large used-row-count can't turn this "list" op into a full scan.
                     int colCount = 0;
-                    int lastRowToScan = Math.min(s.getLastRowNum(), s.getFirstRowNum() + OfficeUtil.HARD_MAX_ROWS);
-                    for (int r = s.getFirstRowNum(); r <= lastRowToScan; r++) {
+                    for (int r = s.getFirstRowNum(); r <= s.getLastRowNum(); r++) {
                         if (s.getRow(r) != null) {
                             colCount = Math.max(colCount, (int) s.getRow(r).getLastCellNum());
                         }

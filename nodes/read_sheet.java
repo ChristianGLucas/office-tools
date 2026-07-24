@@ -20,8 +20,8 @@ public class ReadSheet {
      * BOOLEAN/FORMULA/BLANK/ERROR) with its value, formula text (for FORMULA
      * cells, reporting the cell's last-saved cached result — never
      * live-recomputed), and Excel-formatted display string. Bounded by
-     * max_rows/max_cols (0 = default cap of 10,000 rows / 1,000 columns,
-     * hard ceiling 50,000/5,000); truncated reports whether the sheet's real
+     * max_rows/max_cols (0 = default of 10,000 rows / 1,000 columns; pass a
+     * larger value for more); truncated reports whether the sheet's real
      * extent exceeded the cap that was applied. Select the sheet by name
      * (checked first) or 0-based index.
      *
@@ -35,8 +35,8 @@ public class ReadSheet {
             try (Workbook wb = OfficeUtil.openWorkbook(bytes, input.getFile().getPassword())) {
                 Sheet sheet = OfficeUtil.resolveSheet(wb, input.getSheetName(), input.getSheetIndex());
 
-                int maxRows = clampCap(input.getMaxRows(), OfficeUtil.DEFAULT_MAX_ROWS, OfficeUtil.HARD_MAX_ROWS);
-                int maxCols = clampCap(input.getMaxCols(), OfficeUtil.DEFAULT_MAX_COLS, OfficeUtil.HARD_MAX_COLS);
+                int maxRows = withDefault(input.getMaxRows(), OfficeUtil.DEFAULT_MAX_ROWS);
+                int maxCols = withDefault(input.getMaxCols(), OfficeUtil.DEFAULT_MAX_COLS);
 
                 DataFormatter formatter = new DataFormatter();
                 GridResult.Builder result = GridResult.newBuilder().setSheetName(sheet.getSheetName());
@@ -73,8 +73,7 @@ public class ReadSheet {
         }
     }
 
-    static int clampCap(int requested, int defaultVal, int hardMax) {
-        if (requested <= 0) return defaultVal;
-        return Math.min(requested, hardMax);
+    static int withDefault(int requested, int defaultVal) {
+        return requested <= 0 ? defaultVal : requested;
     }
 }

@@ -21,7 +21,6 @@ public class ExtractDocTables {
      * Extract every table embedded in a .docx Word document as structured
      * rows of cell text, in document order. .doc (legacy binary) is not
      * supported by this node — use ExtractDocText for legacy .doc text.
-     * Bounded to 2,000 tables and 5,000 rows per table.
      *
      * @param ax    The AxiomContext: logging, secrets, reflection, mutation.
      * @param input The decoded OfficeFile for this invocation.
@@ -41,13 +40,11 @@ public class ExtractDocTables {
                 TablesResult.Builder result = TablesResult.newBuilder();
                 int tableCount = 0;
                 for (int ti = 0; ti < tables.size(); ti++) {
-                    if (tableCount >= OfficeUtil.MAX_TABLES) break;
                     XWPFTable table = tables.get(ti);
                     List<XWPFTableRow> rows = table.getRows();
                     DocTable.Builder tb = DocTable.newBuilder().setIndex(ti);
                     int rowCount = 0;
                     for (XWPFTableRow row : rows) {
-                        if (rowCount >= OfficeUtil.MAX_TABLE_ROWS) break;
                         TableRow.Builder rb = TableRow.newBuilder();
                         for (XWPFTableCell cell : row.getTableCells()) {
                             rb.addCells(OfficeUtil.orEmpty(cell.getText()));

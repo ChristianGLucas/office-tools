@@ -19,9 +19,8 @@ public class ReadRange {
      * "B2:D10" or a single cell "B2" — returning the same typed-cell grid
      * shape as ReadSheet, but addressed by range rather than by bounded
      * bulk read. Apache POI's CellRangeAddress owns the A1-notation parsing.
-     * The range is still bounded to a 50,000-row / 5,000-column hard cap
-     * (truncated reports if the requested range exceeded it); a malformed
-     * range reference or an out-of-bounds sheet returns a structured error.
+     * A malformed range reference or an out-of-bounds sheet returns a
+     * structured error.
      *
      * @param ax    The AxiomContext: logging, secrets, reflection, mutation.
      * @param input The decoded ReadRangeInput for this invocation.
@@ -51,13 +50,9 @@ public class ReadRange {
                 Sheet sheet = OfficeUtil.resolveSheet(wb, input.getSheetName(), input.getSheetIndex());
 
                 int firstRow = range.getFirstRow();
-                int lastRowRequested = range.getLastRow();
+                int lastRow = range.getLastRow();
                 int firstCol = range.getFirstColumn();
-                int lastColRequested = range.getLastColumn();
-
-                int lastRow = Math.min(lastRowRequested, firstRow + OfficeUtil.HARD_MAX_ROWS - 1);
-                int lastCol = Math.min(lastColRequested, firstCol + OfficeUtil.HARD_MAX_COLS - 1);
-                boolean truncated = lastRow < lastRowRequested || lastCol < lastColRequested;
+                int lastCol = range.getLastColumn();
 
                 DataFormatter formatter = new DataFormatter();
                 GridResult.Builder result = GridResult.newBuilder().setSheetName(sheet.getSheetName());
@@ -72,7 +67,6 @@ public class ReadRange {
                 }
                 result.setRowCount(lastRow - firstRow + 1);
                 result.setColCount(lastCol - firstCol + 1);
-                result.setTruncated(truncated);
                 return result.build();
             }
         } catch (OfficeUtil.OfficeError e) {

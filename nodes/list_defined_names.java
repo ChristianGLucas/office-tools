@@ -17,8 +17,7 @@ public class ListDefinedNames {
      * things Excel's Name Manager shows — each with its name, the formula
      * or reference it resolves to, whether it is workbook-scoped (-1) or
      * sheet-scoped, and whether it is a named function rather than a range.
-     * Bounded at 5,000 names; a workbook with none returns an empty list,
-     * not an error.
+     * A workbook with none returns an empty list, not an error.
      *
      * @param ax    The AxiomContext: logging, secrets, reflection, mutation.
      * @param input The decoded OfficeFile for this invocation.
@@ -32,7 +31,6 @@ public class ListDefinedNames {
                 DefinedNamesResult.Builder result = DefinedNamesResult.newBuilder();
                 int count = 0;
                 for (Name n : names) {
-                    if (count >= OfficeUtil.MAX_DEFINED_NAMES) break;
                     result.addNames(gen.Messages.DefinedName.newBuilder()
                             .setName(OfficeUtil.orEmpty(n.getNameName()))
                             .setRefersTo(OfficeUtil.orEmpty(n.getRefersToFormula()))
